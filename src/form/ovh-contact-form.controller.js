@@ -156,8 +156,8 @@ export default class OvhContactsFormCtrl {
           this.initialDefaultValues = {};
 
           forIn(rules, (ruleValue) => {
-            const isPhoneCountry = ruleValue.name !== 'phoneCountry';
-            if (isPhoneCountry && (ruleValue.defaultValue || ruleValue.initialValue)) {
+            const isPhoneCountry = ruleValue.name === 'phoneCountry';
+            if (!isPhoneCountry && (ruleValue.defaultValue || ruleValue.initialValue)) {
               set(
                 this.initialDefaultValues,
                 `['${ruleValue.path}']`,

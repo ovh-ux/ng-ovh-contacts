@@ -6,7 +6,6 @@ import find from 'lodash/find';
 import forIn from 'lodash/forIn';
 import get from 'lodash/get';
 import groupBy from 'lodash/groupBy';
-import has from 'lodash/has';
 import includes from 'lodash/includes';
 import isEqual from 'lodash/isEqual';
 import map from 'lodash/map';
@@ -19,14 +18,7 @@ import {
   CONTACT_TO_NIC_FIELDS_MAPPING,
 } from '../ovh-contacts.constants';
 
-const getMappedKey = (property, path) => {
-  let mappedKey = property;
-
-  if (has(CONTACT_TO_NIC_FIELDS_MAPPING, path)) {
-    mappedKey = get(CONTACT_TO_NIC_FIELDS_MAPPING, path);
-  }
-  return mappedKey;
-};
+const getMappedKey = (property, path) => get(CONTACT_TO_NIC_FIELDS_MAPPING, path, property);
 
 export default class OvhContactsHelper {
   /**
@@ -240,16 +232,13 @@ export default class OvhContactsHelper {
         );
 
         if (nicRule) {
-          // set default value from nicRule to contactRule
-          set(contactRule, 'defaultValue', nicRule.defaultValue);
-          // set initial value from initialValues param
-          set(contactRule, 'initialValue', get(initialValues, contactRule.name));
-          // set regular expression from nicRule to contactRule
-          set(contactRule, 'regularExpression', nicRule.regularExpression);
-          // set prefix from nicRule to contactRule
-          set(contactRule, 'prefix', nicRule.prefix);
-          // set example from nicRule to contactRule
-          set(contactRule, 'examples', nicRule.examples);
+          Object.assign(contactRule, {
+            defaultValue: nicRule.defaultValue,
+            initialValue: get(initialValues, contactRule.name),
+            regularExpression: nicRule.regularExpression,
+            prefix: nicRule.prefix,
+            examples: nicRule.examples,
+          });
 
           if (size(nicRule.in) && contactRule.fullType === 'string') {
             set(contactRule, 'enum', nicRule.in);
