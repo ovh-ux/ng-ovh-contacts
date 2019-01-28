@@ -2,9 +2,9 @@ import angular from 'angular';
 
 // lodash imports
 import find from 'lodash/find';
+import forIn from 'lodash/forIn';
 import get from 'lodash/get';
 import keyBy from 'lodash/keyBy';
-import keys from 'lodash/keys';
 import map from 'lodash/map';
 import reject from 'lodash/reject';
 import set from 'lodash/set';
@@ -45,16 +45,10 @@ export default class OvhContactsService {
       apiSchemas: this.getMeSchemas(),
     })
       .then(({ nic, apiSchemas }) => {
-        const contactProperties = OvhContactsHelper.mergeContactEnumsProperties(
-          get(apiSchemas, 'models["contact.Contact"].properties'),
-          get(apiSchemas, 'models["contact.Address"].properties'),
-        );
-
-        const nicToContact = new OvhContact(
+        const contactProperties = OvhContactsHelper.getContactProperties(apiSchemas);
+        return new OvhContact(
           OvhContactsHelper.convertNicToContact(nic, contactProperties),
         );
-
-        return nicToContact;
       });
   }
 
@@ -155,49 +149,42 @@ export default class OvhContactsService {
       })
       .then(rulesOptions => this.$q.all({
         apiSchemas: this.getMeSchemas(),
-        creationRules: this.OvhApiNewAccount.v6().rules({}, rulesOptions).$promise,
+        nicCreationRules: this.OvhApiNewAccount.v6().rules({}, rulesOptions).$promise,
       }))
-      .then(({ apiSchemas, creationRules }) => {
-        const rules = OvhContactsHelper.mergeContactPropertiesWithCreationRules(
-          apiSchemas,
-          keyBy(creationRules, 'fieldName'),
+      .then(({ apiSchemas, nicCreationRules }) => {
+        const contactRules = OvhContactsHelper.mergeContactPropertiesWithCreationRules(
+          OvhContactsHelper.getContactProperties(apiSchemas),
+          keyBy(nicCreationRules, 'fieldName'),
           predefinedProperties,
           options,
         );
 
-        // translate properties with enum
-        // first get rules with enum
-        const getRulesWithEnum = (rulesParam, result = []) => {
-          keys(rulesParam).forEach((ruleKey) => {
-            if (ruleKey === 'address') {
-              getRulesWithEnum(rulesParam.address, result);
-            } else if (get(rulesParam, `${ruleKey}.enum`)) {
-              result.push(get(rulesParam, ruleKey));
-            }
-          });
+        // translate propeties with enum
+        forIn(contactRules, (ruleValue) => {
+          const ruleVal = ruleValue;
+          const apiModel = get(
+            apiSchemas.models,
+            `['${ruleValue.fullType}'].enum`,
+            get(ruleVal, 'enum'),
+          );
+          if (apiModel) {
+            const ruleValEnumExtra = find(ENUMS_TO_TRANSFORM, { path: ruleVal.path });
 
-          return result;
-        };
+            ruleVal.enum = map(apiModel, (enumVal) => {
+              let translationKey = `ovh_contact_form_${snakeCase(ruleValue.fullType)}_${enumVal}`;
+              if (ruleValEnumExtra && ruleValEnumExtra.dependsOfCountry) {
+                translationKey = `ovh_contact_form_${snakeCase(ruleValue.fullType !== 'string' ? ruleValue.fullType : ruleValue.path)}_${options.country}_${enumVal}`;
+              }
 
-        getRulesWithEnum(rules).forEach((ruleParam) => {
-          const rule = ruleParam;
-
-          rule.enum = map(rule.enum, (enumVal) => {
-            let translationKey = `ovh_contact_form_${snakeCase(rule.fullType)}_${enumVal}`;
-            const enumExtra = find(ENUMS_TO_TRANSFORM, { path: rule.name });
-
-            if (enumExtra && enumExtra.dependsOfCountry) {
-              translationKey = `ovh_contact_form_${snakeCase(rule.fullType !== 'string' ? rule.fullType : rule.name)}_${options.country}_${enumVal}`;
-            }
-
-            return {
-              value: enumVal,
-              label: this.$translate.instant(translationKey),
-            };
-          });
+              return {
+                value: enumVal,
+                label: this.$translate.instant(translationKey),
+              };
+            });
+          }
         });
 
-        return rules;
+        return contactRules;
       });
   }
 

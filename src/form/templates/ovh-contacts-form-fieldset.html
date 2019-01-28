@@ -48,7 +48,7 @@
                             <select class="oui-select__input"
                                     name="addressCountry" id="addressCountry"
                                     data-ng-model="$ctrl.model.address.country"
-                                    data-ng-options="country.value as country.label for country in $ctrl.rules.address.country.enum"
+                                    data-ng-options="country.value as country.label for country in $ctrl.rules['address.country'].enum"
                                     data-ng-change="$ctrl.onCountryChange()">
                             </select>
                             <span class="oui-icon oui-icon-chevron-down" aria-hidden="true"></span>
@@ -60,7 +60,7 @@
                         <input type="text" class="oui-input"
                                name="addressLine1" id="addressLine1"
                                data-ng-model="$ctrl.model.address.line1"
-                               data-ng-required="!$ctrlrules.address.line1.required" />
+                               data-ng-required="!$ctrl.rules['address.line1'].required" />
                     </oui-field> <!-- End of address.line1 -->
 
                     <!-- address.zip -->
@@ -68,8 +68,8 @@
                         <input type="text" class="oui-input"
                                name="addressZip" id="addressZip"
                                data-ng-model="$ctrl.model.address.zip"
-                               data-ng-required="!$ctrlrules.address.zip.required"
-                               data-ng-pattern="$ctrl.rules.address.zip.regularExpression" />
+                               data-ng-required="!$ctrl.rules['address.zip'].required"
+                               data-ng-pattern="$ctrl.rules['address.zip'].regularExpression" />
                     </oui-field> <!-- End of address.zip -->
 
                     <!-- address.city -->
@@ -77,18 +77,18 @@
                         <input type="text" class="oui-input"
                                name="addressCity" id="addressCity"
                                data-ng-model="$ctrl.model.address.city"
-                               data-ng-required="!$ctrlrules.address.city.required"
-                               data-ng-pattern="$ctrl.rules.address.city.regularExpression" />
+                               data-ng-required="!$ctrl.rules['address.city'].required"
+                               data-ng-pattern="$ctrl.rules['address.city'].regularExpression" />
                     </oui-field> <!-- End of address.city -->
 
                     <!-- address.province -->
                     <oui-field data-label="{{ $ctrl.getProvinceLabel(true) }}"
-                               data-ng-if="$ctrl.rules.address.province">
+                               data-ng-if="$ctrl.rules['address.province']">
                         <label class="oui-select">
                             <select class="oui-select__input"
                                     name="addressProvince" id="addressProvince"
                                     data-ng-model="$ctrl.model.address.province"
-                                    data-ng-options="province.value as province.label for province in $ctrl.rules.address.province.enum">
+                                    data-ng-options="province.value as province.label for province in $ctrl.rules['address.province'].enum">
                                 <option value=""
                                         data-ng-bind="$ctrl.getProvinceLabel()">
                                 </option>

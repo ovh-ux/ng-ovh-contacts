@@ -3,15 +3,15 @@ import moment from 'moment';
 
 // lodash imports
 import find from 'lodash/find';
+import forIn from 'lodash/forIn';
 import get from 'lodash/get';
 import groupBy from 'lodash/groupBy';
 import has from 'lodash/has';
-import indexOf from 'lodash/indexOf';
+import includes from 'lodash/includes';
 import isEqual from 'lodash/isEqual';
-import keyBy from 'lodash/keyBy';
-import keys from 'lodash/keys';
-import last from 'lodash/last';
 import map from 'lodash/map';
+import merge from 'lodash/merge';
+import size from 'lodash/size';
 import set from 'lodash/set';
 import startsWith from 'lodash/startsWith';
 
@@ -19,12 +19,11 @@ import {
   CONTACT_TO_NIC_FIELDS_MAPPING,
 } from '../ovh-contacts.constants';
 
-const getMappedKey = (property, prefix) => {
+const getMappedKey = (property, path) => {
   let mappedKey = property;
-  const fullProperty = prefix ? `${prefix}.${property}` : property;
 
-  if (has(CONTACT_TO_NIC_FIELDS_MAPPING, fullProperty)) {
-    mappedKey = get(CONTACT_TO_NIC_FIELDS_MAPPING, fullProperty);
+  if (has(CONTACT_TO_NIC_FIELDS_MAPPING, path)) {
+    mappedKey = get(CONTACT_TO_NIC_FIELDS_MAPPING, path);
   }
   return mappedKey;
 };
@@ -99,26 +98,21 @@ export default class OvhContactsHelper {
     const contact = {};
     let nicVal;
 
-    keys(contactProperties).forEach((propKey) => {
-      if (propKey === 'address') {
-        keys(contactProperties.address).forEach((addressPropKey) => {
-          nicVal = get(nic, getMappedKey(addressPropKey, 'address'), null);
-          set(contact, `address.${addressPropKey}`, nicVal);
-        });
-      } else if (propKey === 'birthDay') {
+    forIn(contactProperties, (propertyValue) => {
+      if (propertyValue.name === 'birthDay') {
         if (new RegExp(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/).test(nic.birthDay)) {
-          const splittedDate = nic[propKey].split('/');
-          set(contact, propKey, splittedDate.reverse().join('-'));
+          const splittedDate = nic.birthDay.split('/');
+          set(contact, 'birthDay', splittedDate.reverse().join('-'));
         } else {
-          set(contact, propKey, null);
+          set(contact, 'birthDay', null);
         }
       } else {
         nicVal = get(
           nic,
-          getMappedKey(propKey),
-          get(nic, getMappedKey(propKey.toLowerCase()), null),
+          getMappedKey(propertyValue.name, propertyValue.path),
+          get(nic, getMappedKey(propertyValue.name, propertyValue.path).toLowerCase(), null),
         );
-        set(contact, propKey, nicVal);
+        set(contact, propertyValue.path, nicVal);
       }
     });
 
@@ -146,126 +140,127 @@ export default class OvhContactsHelper {
   }
 
   /**
-   *  Merge contact.Contact enum properties with contact.Address enum properties.
-   *  @param  {Object} contactProperties        contact.Contact enum properties
-   *  @param  {Object} contactAddressProperties contact.Address enum properties
-   *  @return {Object}                          Merged  enum properties.
+   *  Get the properties for creating a contact object.
+   *  @param  {Object} apiSchemas The /me API schema Object.
+   *  @return {Object}            The entire properties for creating a contact object.
    */
-  static mergeContactEnumsProperties(contactProperties, contactAddressProperties) {
-    const contactProps = contactProperties;
-    const contactAddressProps = contactAddressProperties;
+  static getContactProperties(apiSchemas) {
+    const properties = {};
 
-    map(contactProps, (propParam, propKey) => {
-      const prop = propParam;
-      set(prop, 'name', propKey);
-      return prop;
-    });
+    const contactProperties = get(apiSchemas, 'models["contact.Contact"].properties');
+    const contactAddressProperties = get(apiSchemas, 'models["contact.Address"].properties');
 
-    contactProps.address = {};
-    keys(contactAddressProps).forEach((propKey) => {
-      contactAddressProps[propKey].name = `address.${propKey}`;
-      set(contactProps, `address.${propKey}`, contactAddressProps[propKey]);
-    });
-
-    return contactProps;
-  }
-
-  /**
-   *  Merge the contact properties with /newAccount/rules.
-   *  @param  {Object} apiSchemas           The schema of /me API.
-   *  @param  {Array}  rules                An array containing the nic creation rules
-   *  @param  {Array}  predefinedProperties An array containing the list of contact creation fields.
-   *  @return {Object}                      An object with necessary fields for contact creation.
-   */
-  static mergeContactPropertiesWithCreationRules(
-    apiSchemas, rules, predefinedProperties, nicValue,
-  ) {
+    // take the POST operations parameters as the API schema allows null value and POST not...
+    // first find the /me/contact path into /me schema
     const meContactApi = find(apiSchemas.apis, {
       path: '/me/contact',
     });
 
-    // take the POST operations parameters as the API schema allows null value and POST not...
-    const postParams = keyBy(find(meContactApi.operations, {
+    // and take the POST API parameters of /me/contact
+    const postParams = find(meContactApi.operations, {
       httpMethod: 'POST',
-    }).parameters, 'name');
-    const addressProps = get(apiSchemas, 'models["contact.Address"].properties');
-    const addressPostParam = keyBy(map(addressProps, (param) => {
-      const postParam = param;
-      postParam.required = !postParam.canBeNull;
-      postParam.name = last(postParam.name.split('.'));
-      delete postParam.canBeNull;
-      return postParam;
-    }), 'name');
+    }).parameters;
 
-    const contactProps = OvhContactsHelper.mergeContactEnumsProperties(
-      postParams,
-      addressPostParam,
-    );
-
-    const setContactFieldRule = (contactProp, rule, fullType, keyPrefix = '') => {
-      // set enum if propery have one
-      if (fullType.indexOf('.') > -1) {
-        const typeEnum = get(apiSchemas, `models['${fullType}'].enum`, null);
-        set(contactProps, `${contactProp}.enum`, typeEnum);
-      } else if (rule.in) {
-        set(contactProps, `${contactProp}.enum`, rule.in);
+    const modifyContactProperty = (propertyValue) => {
+      const contactProperty = angular.copy(propertyValue);
+      const postProp = find(postParams, { name: contactProperty.name });
+      if (postProp) {
+        contactProperty.required = postProp.required;
+      } else {
+        contactProperty.required = !contactProperty.canBeNull;
       }
 
-      // set default value if provided by rule
-      set(contactProps, `${contactProp}.defaultValue`, rule.defaultValue);
-      set(
-        contactProps,
-        `${contactProp}.initialValue`,
-        nicValue[contactProp.replace(`${keyPrefix}.`, '')], // TODO need to refactor this
-      );
+      // remove no more necessary properties of contactProperty
+      delete contactProperty.canBeNull;
+      delete contactProperty.readOnly;
 
-      // set regular expression if provided by rule
-      set(contactProps, `${contactProp}.regularExpression`, rule.regularExpression);
-
-      // set prefix and example if provided by rule
-      set(contactProps, `${contactProp}.prefix`, rule.prefix);
-      set(contactProps, `${contactProp}.examples`, rule.examples);
+      return contactProperty;
     };
 
-    const setContactFieldsRules = (properties, prefix) => {
-      const props = properties;
+    // iterate over contact.Contact model
+    forIn(contactProperties, (propertyValue, propertyKey) => {
+      // do nothing with address
+      if (propertyKey === 'address') {
+        return;
+      }
 
-      keys(props).forEach((propKey) => {
-        const fullProperty = get(props, propKey);
-        const propertyKeyPath = prefix ? `${prefix}.${propKey}` : propKey;
-
-        if (!has(fullProperty, 'fullType')) {
-          // if fullType is not set it means that it's a nested properties object
-          setContactFieldsRules(fullProperty, propertyKeyPath);
-        } else if (indexOf(predefinedProperties, propertyKeyPath) > -1) {
-          const rule = get(
-            rules,
-            getMappedKey(propKey, prefix),
-            get(rules, getMappedKey(propKey, prefix).toLowerCase()),
-          );
-
-          if (rule) {
-            setContactFieldRule(propertyKeyPath, rule, fullProperty.fullType, prefix);
-          } else {
-            delete props[propKey];
-          }
-        } else {
-          delete props[propKey];
-        }
-      });
-    };
-
-    // call recursively setContactFieldsRules to set exact rules for contact creation
-    setContactFieldsRules(contactProps);
-
-    // add phone country rule
-    set(contactProps, 'phoneCountry', {
-      name: 'phoneCountry',
-      fullType: 'nichandle.CountryEnum',
-      canBeNull: 1,
+      set(properties, propertyKey, merge({
+        name: propertyKey,
+        path: propertyKey,
+      }, modifyContactProperty(propertyValue)));
     });
-    setContactFieldRule('phoneCountry', get(rules, 'phoneCountry'), 'nichandle.CountryEnum');
 
-    return contactProps;
+    // do the same for contact.Address model
+    // except that there is no post rules for these properties
+    forIn(contactAddressProperties, (propertyValue, propertyKey) => {
+      set(properties, `['address.${propertyKey}']`, merge({
+        name: propertyKey,
+        path: `address.${propertyKey}`,
+      }, modifyContactProperty(propertyValue)));
+    });
+
+    return properties;
+  }
+
+  /**
+   *  Merge the contact properties with /newAccount/rules.
+   *  @param  {Object} contactProperties    An object containing the contact creation properties.
+   *  @param  {Object} nicCreationRules     An object containing the nic creation rules.
+   *  @param  {Array}  predefinedProperties An array containing the list of contact
+   *                                        creation fields.
+   *  @param  {Object} initialValues        An object containing some initial values
+   *                                        for the contact.
+   *  @return {Object}                      An object with necessary fields for contact creation.
+   */
+  static mergeContactPropertiesWithCreationRules(
+    contactProperties, nicCreationRules, predefinedProperties, initialValues,
+  ) {
+    const creationRules = {};
+
+    // first add phoneCountry property
+    const copiedContactProps = angular.copy(contactProperties);
+    const phoneCountryProp = angular.copy(copiedContactProps['address.country']);
+    phoneCountryProp.name = 'phoneCountry';
+    phoneCountryProp.path = 'phoneCountry';
+    phoneCountryProp.description = 'Phone country';
+    set(copiedContactProps, 'phoneCountry', phoneCountryProp);
+
+    // then merge each contactProperties with its associated nic creation rule
+    forIn(copiedContactProps, (propertyValue) => {
+      const contactRule = angular.copy(propertyValue);
+      const isPhoneCountry = contactRule.name === 'phoneCountry';
+      if (isPhoneCountry || includes(predefinedProperties, contactRule.path)) {
+        const nicRule = get(
+          nicCreationRules,
+          getMappedKey(propertyValue.name, propertyValue.path),
+          get(
+            nicCreationRules,
+            getMappedKey(propertyValue.name, propertyValue.path).toLowerCase(),
+          ),
+        );
+
+        if (nicRule) {
+          // set default value from nicRule to contactRule
+          set(contactRule, 'defaultValue', nicRule.defaultValue);
+          // set initial value from initialValues param
+          set(contactRule, 'initialValue', get(initialValues, contactRule.name));
+          // set regular expression from nicRule to contactRule
+          set(contactRule, 'regularExpression', nicRule.regularExpression);
+          // set prefix from nicRule to contactRule
+          set(contactRule, 'prefix', nicRule.prefix);
+          // set example from nicRule to contactRule
+          set(contactRule, 'examples', nicRule.examples);
+
+          if (size(nicRule.in) && contactRule.fullType === 'string') {
+            set(contactRule, 'enum', nicRule.in);
+          }
+
+          // set contactRule to creationRules list
+          set(creationRules, `['${contactRule.path}']`, contactRule);
+        }
+      }
+    });
+
+    return creationRules;
   }
 }

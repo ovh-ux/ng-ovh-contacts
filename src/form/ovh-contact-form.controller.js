@@ -2,10 +2,10 @@ import angular from 'angular';
 
 // lodash imports
 import filter from 'lodash/filter';
+import forIn from 'lodash/forIn';
 import get from 'lodash/get';
 import has from 'lodash/has';
 import head from 'lodash/head';
-import keys from 'lodash/keys';
 import set from 'lodash/set';
 import startsWith from 'lodash/startsWith';
 
@@ -51,16 +51,6 @@ export default class OvhContactsFormCtrl {
       type: null,
       message: null,
     };
-  }
-
-  static traverseRules(rules, callback, prefix) {
-    keys(rules).forEach((ruleKey) => {
-      if (!has(rules, `${ruleKey}.fullType`)) {
-        OvhContactsFormCtrl.traverseRules(get(rules, ruleKey), callback, ruleKey);
-      } else {
-        callback(get(rules, ruleKey), prefix ? `${prefix}.${ruleKey}` : ruleKey);
-      }
-    });
   }
 
   static cleanPhoneNumber(phoneNumberParam, phonePrefix) {
@@ -164,11 +154,22 @@ export default class OvhContactsFormCtrl {
         // set initial default value and initial model
         if (!this.initialDefaultValues) {
           this.initialDefaultValues = {};
-          OvhContactsFormCtrl.traverseRules(rules, (rule, ruleKey) => {
-            if (ruleKey !== 'phoneCountry' && (rule.defaultValue || rule.initialValue)) {
-              set(this.initialDefaultValues, ruleKey, rule.defaultValue);
-              set(this.model, ruleKey, rule.initialValue || rule.defaultValue);
-              if (ruleKey === 'address.country') {
+
+          forIn(rules, (ruleValue) => {
+            const isPhoneCountry = ruleValue.name !== 'phoneCountry';
+            if (isPhoneCountry && (ruleValue.defaultValue || ruleValue.initialValue)) {
+              set(
+                this.initialDefaultValues,
+                `['${ruleValue.path}']`,
+                ruleValue.defaultValue,
+              );
+              set(
+                this.model,
+                ruleValue.path,
+                ruleValue.initialValue || ruleValue.defaultValue,
+              );
+
+              if (ruleValue.path === 'address.country') {
                 this.setPhoneCountry();
               }
             }
@@ -181,7 +182,7 @@ export default class OvhContactsFormCtrl {
         // sort the enums that need to be sorted
         filter(ENUMS_TO_TRANSFORM, { sort: true }).forEach((enumDef) => {
           if (has(rules, enumDef.path)) {
-            const sortedEnum = get(rules, `${enumDef.path}.enum`, []).sort((valA, valB) => {
+            const sortedEnum = get(rules, `['${enumDef.path}'].enum`, []).sort((valA, valB) => {
               if (valA.value === get(this.initialDefaultValues, enumDef.path)) {
                 return -1;
               } if (valB.value === get(this.initialDefaultValues, enumDef.path)) {
@@ -190,7 +191,7 @@ export default class OvhContactsFormCtrl {
               return valA.label.localeCompare(valB.label);
             });
 
-            set(rules, `${enumDef.path}.enum`, sortedEnum);
+            set(rules, `['${enumDef.path}'].enum`, sortedEnum);
           }
         });
 
